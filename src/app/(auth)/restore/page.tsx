@@ -5,7 +5,11 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
+import {
+  isSupabaseConfigured,
+  missingSupabaseEnvMessage,
+  requireSupabaseClient,
+} from '@/lib/supabase/client'
 import { pullFromSupabase } from '@/lib/supabase/sync'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,11 +37,18 @@ export default function RestorePage() {
   } = useForm<RestoreForm>({ resolver: zodResolver(restoreSchema) })
 
   async function onSubmit(data: RestoreForm) {
+    if (!isSupabaseConfigured) {
+      setError(missingSupabaseEnvMessage)
+      return
+    }
+
     setLoading(true)
     setError(null)
     setStatus('Signing in...')
 
     try {
+      const supabase = requireSupabaseClient()
+
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
@@ -75,6 +86,12 @@ export default function RestorePage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Sign in with your owner account to restore data on this device.
         </p>
+
+        {!isSupabaseConfigured && (
+          <div className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {missingSupabaseEnvMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
           <div>
@@ -128,7 +145,7 @@ export default function RestorePage() {
 
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || !isSupabaseConfigured}
             className="w-full bg-primary hover:bg-primary-dark text-white"
           >
             {loading ? (

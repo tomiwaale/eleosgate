@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { syncToSupabase } from '@/lib/supabase/sync'
+import { isSupabaseConfigured } from '@/lib/supabase/client'
 import { useSyncStore } from '@/store/sync.store'
 import { db } from '@/lib/db'
 
@@ -9,6 +10,7 @@ export function useSync() {
   const { setStatus, setLastSyncedAt } = useSyncStore()
 
   const sync = useCallback(async () => {
+    if (!isSupabaseConfigured) return
     if (!navigator.onLine) return
     setStatus('syncing')
     try {
@@ -22,6 +24,8 @@ export function useSync() {
   }, [setStatus, setLastSyncedAt])
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return
+
     sync()
 
     const interval = setInterval(sync, 60_000)

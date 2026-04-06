@@ -2,11 +2,8 @@
 
 import { Sidebar } from './Sidebar'
 import { SyncBadge } from './SyncBadge'
-import { useSync } from '@/hooks/useSync'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  useSync()
-
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
       <Sidebar />

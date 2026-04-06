@@ -8,7 +8,11 @@ import { useRouter } from 'next/navigation'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
 import { hashPin } from '@/lib/auth/pin'
-import { supabase } from '@/lib/supabase/client'
+import {
+  isSupabaseConfigured,
+  missingSupabaseEnvMessage,
+  requireSupabaseClient,
+} from '@/lib/supabase/client'
 import { useSessionStore } from '@/store/session.store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,10 +53,17 @@ export default function SetupPage() {
   } = useForm<SetupForm>({ resolver: zodResolver(setupSchema) })
 
   async function onSubmit(data: SetupForm) {
+    if (!isSupabaseConfigured) {
+      setError(missingSupabaseEnvMessage)
+      return
+    }
+
     setLoading(true)
     setError(null)
 
     try {
+      const supabase = requireSupabaseClient()
+
       // 1. Create Supabase account
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -109,6 +120,12 @@ export default function SetupPage() {
             Set up your pharmacy store to get started.
           </p>
         </div>
+
+        {!isSupabaseConfigured && (
+          <div className="mb-6 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {missingSupabaseEnvMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* Store Details */}
@@ -259,7 +276,7 @@ export default function SetupPage() {
 
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || !isSupabaseConfigured}
             className="w-full bg-primary hover:bg-primary-dark text-white"
           >
             {loading ? (

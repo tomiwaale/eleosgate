@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { supabase } from './client'
+import { getSupabaseClient, isSupabaseConfigured, missingSupabaseEnvMessage } from './client'
 
 // ── field-name helpers ──────────────────────────────────────────────────────
 
@@ -41,6 +41,9 @@ async function getStoreId(): Promise<string | null> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function pushTable(tableName: string, table: any, storeId: string) {
+  const supabase = getSupabaseClient()
+  if (!supabase) return
+
   const unsynced = (await table.toArray()).filter((row: Record<string, unknown>) => !row.isSynced)
   if (!unsynced.length) return
 
@@ -60,6 +63,9 @@ async function pushTable(tableName: string, table: any, storeId: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function pullTable(remoteName: string, local: any, storeId: string) {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error(missingSupabaseEnvMessage)
+
   const { data, error } = await supabase
     .from(remoteName)
     .select('*')
@@ -73,6 +79,7 @@ async function pullTable(remoteName: string, local: any, storeId: string) {
 // ── public API ──────────────────────────────────────────────────────────────
 
 export async function syncToSupabase() {
+  if (!isSupabaseConfigured) return
   if (typeof navigator !== 'undefined' && !navigator.onLine) return
 
   const storeId = await getStoreId()
@@ -88,6 +95,10 @@ export async function syncToSupabase() {
 }
 
 export async function pullFromSupabase(storeId: string) {
+  if (!isSupabaseConfigured) {
+    throw new Error(missingSupabaseEnvMessage)
+  }
+
   await pullTable('eg_users', db.users, storeId)
   await pullTable('eg_categories', db.categories, storeId)
   await pullTable('eg_products', db.products, storeId)
