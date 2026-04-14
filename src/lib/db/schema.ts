@@ -13,6 +13,7 @@ export interface Category {
   id: string
   name: string
   createdAt: string
+  updatedAt: string
   isSynced: boolean
 }
 
@@ -52,6 +53,17 @@ export interface SaleItem {
   quantity: number
   unitPrice: number
   subtotal: number
+  isSynced: boolean
+}
+
+export interface StockAdjustment {
+  id: string
+  productId: string
+  quantityChange: number
+  reason: 'sale' | 'manual_adjustment' | 'initial_stock'
+  saleId?: string
+  createdAt: string
+  isSynced: boolean
 }
 
 export interface StoreSetting {

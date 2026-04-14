@@ -9,22 +9,30 @@ import { useCartStore } from '@/store/cart.store'
 import { useSessionStore } from '@/store/session.store'
 import { useSync } from '@/hooks/useSync'
 import { useDebounce } from '@/hooks/useDebounce'
+import { createStockAdjustment } from '@/lib/inventory/stock'
 import { generateReceiptNumber } from '@/lib/utils/receipt-number'
 import { printReceipt } from '@/lib/printing/thermal'
+import { formatCurrency } from '@/lib/utils/currency'
 import { SearchBar } from '@/components/pos/SearchBar'
 import { ProductGrid } from '@/components/pos/ProductGrid'
 import { Cart } from '@/components/pos/Cart'
 import { PaymentModal } from '@/components/pos/PaymentModal'
+import {
+  Sheet,
+  SheetContent,
+} from '@/components/ui/sheet'
 import type { Product } from '@/lib/db'
+import { ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function POSPage() {
   const { user } = useSessionStore()
   const { items, addItem, clearCart, total } = useCartStore()
-  const { sync } = useSync()
+  const { sync } = useSync({ auto: false })
 
   const [search, setSearch] = useState('')
   const [paymentOpen, setPaymentOpen] = useState(false)
+  const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [nextReceipt, setNextReceipt] = useState('EG-????')
 
   const searchRef = useRef<HTMLInputElement>(null)
@@ -33,11 +41,9 @@ export default function POSPage() {
   // Pre-fetch the next receipt number on mount
   useEffect(() => {
     async function peek() {
-      const setting = await db.settings.get('last_receipt_number')
-      const next = parseInt(setting?.value ?? '0') + 1
-      setNextReceipt(`EG-${next.toString().padStart(4, '0')}`)
+      setNextReceipt(await generateReceiptNumber())
     }
-    peek()
+    void peek()
   }, [items.length]) // refresh after every sale (cart cleared)
 
   const allProducts = useLiveQuery(
@@ -100,7 +106,7 @@ export default function POSPage() {
 
     const saleId = uuidv4()
     const now = new Date().toISOString()
-    const receiptNumber = await generateReceiptNumber()
+    const receiptNumber = nextReceipt === 'EG-????' ? await generateReceiptNumber() : nextReceipt
     const cartTotal = total()
     const changeAmount = Math.max(0, tendered - cartTotal)
 
@@ -124,19 +130,36 @@ export default function POSPage() {
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       subtotal: item.subtotal,
+      isSynced: false,
     }))
 
-    // Single Dexie transaction: write sale + items + deduct stock
-    await db.transaction('rw', db.sales, db.saleItems, db.products, async () => {
+    // Single Dexie transaction: write sale + items + queue stock adjustments
+    await db.transaction('rw', db.sales, db.saleItems, db.products, db.stockAdjustments, async () => {
       await db.sales.add(sale)
       await db.saleItems.bulkAdd(saleItems)
       for (const item of items) {
+        let appliedChange = 0
         await db.products.where('id').equals(item.productId).modify((p) => {
-          p.quantityInStock = Math.max(0, p.quantityInStock - item.quantity)
-          p.isSynced = false
+          const nextQuantity = Math.max(0, p.quantityInStock - item.quantity)
+          appliedChange = nextQuantity - p.quantityInStock
+          p.quantityInStock = nextQuantity
         })
+
+        if (appliedChange !== 0) {
+          await db.stockAdjustments.add(
+            createStockAdjustment({
+              productId: item.productId,
+              quantityChange: appliedChange,
+              reason: 'sale',
+              saleId,
+              createdAt: now,
+            })
+          )
+        }
       }
     })
+
+    setNextReceipt(await generateReceiptNumber())
 
     // Print receipt
     try {
@@ -147,6 +170,7 @@ export default function POSPage() {
 
     clearCart()
     setPaymentOpen(false)
+    setCartSheetOpen(false)
     focusSearch()
     toast.success(`Sale ${receiptNumber} recorded`)
 
@@ -154,10 +178,13 @@ export default function POSPage() {
     sync()
   }
 
+  const cartTotal = total()
+  const cartCount = items.length
+
   return (
     <div className="flex h-full gap-4 overflow-hidden -m-4">
       {/* Left — Search + Results */}
-      <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
+      <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4 pb-[4.5rem] md:pb-4">
         <SearchBar
           ref={searchRef}
           value={search}
@@ -175,8 +202,8 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Right — Cart */}
-      <div className="w-80 xl:w-96 shrink-0 border-l bg-gray-50 overflow-hidden flex flex-col">
+      {/* Right — Cart (desktop only) */}
+      <div className="hidden md:flex w-80 xl:w-96 shrink-0 border-l bg-gray-50 overflow-hidden flex-col">
         <Cart
           receiptNumber={nextReceipt}
           onCharge={() => {
@@ -186,9 +213,41 @@ export default function POSPage() {
         />
       </div>
 
+      {/* Mobile — floating cart bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 p-3 md:hidden">
+        {cartCount > 0 ? (
+          <button
+            onClick={() => setCartSheetOpen(true)}
+            className="w-full flex items-center justify-between rounded-xl bg-primary px-4 py-3.5 text-white shadow-lg active:scale-[0.98] transition-transform"
+          >
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4" />
+              <span className="font-semibold text-sm">
+                {cartCount} item{cartCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <span className="font-bold tabular-nums">{formatCurrency(cartTotal)}</span>
+          </button>
+        ) : null}
+      </div>
+
+      {/* Mobile — cart sheet */}
+      <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
+        <SheetContent side="right" showCloseButton={false} className="w-full sm:w-80 p-0 md:hidden">
+          <Cart
+            receiptNumber={nextReceipt}
+            onCharge={() => {
+              if (items.length === 0) return
+              setCartSheetOpen(false)
+              setPaymentOpen(true)
+            }}
+          />
+        </SheetContent>
+      </Sheet>
+
       {/* Payment modal */}
       <PaymentModal
-        total={total()}
+        total={cartTotal}
         open={paymentOpen}
         onClose={() => {
           setPaymentOpen(false)

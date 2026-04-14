@@ -37,33 +37,20 @@ export function SalesTable({ sales, users, showStaff }: Props) {
   }
 
   return (
-    <div className="rounded-lg border bg-white overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-gray-50 hover:bg-gray-50">
-            <TableHead className="font-semibold">Receipt</TableHead>
-            <TableHead className="font-semibold">Date & Time</TableHead>
-            {showStaff && <TableHead className="font-semibold">Staff</TableHead>}
-            <TableHead className="font-semibold">Payment</TableHead>
-            <TableHead className="font-semibold text-right">Total</TableHead>
-            <TableHead className="w-12" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sales.map((sale) => (
-            <TableRow key={sale.id} className="hover:bg-gray-50/50">
-              <TableCell className="font-mono text-sm font-semibold text-primary">
-                {sale.receiptNumber}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {formatDate(sale.createdAt)}
-              </TableCell>
-              {showStaff && (
-                <TableCell className="text-sm">
-                  {userMap[sale.servedBy] ?? '—'}
-                </TableCell>
-              )}
-              <TableCell>
+    <>
+      {/* ── Mobile card view ──────────────────────────────────────────── */}
+      <div className="md:hidden space-y-2">
+        {sales.map((sale) => (
+          <Link
+            key={sale.id}
+            href={`/sales/${sale.id}`}
+            className="flex items-center gap-3 rounded-lg border bg-white p-4 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-semibold text-primary">
+                  {sale.receiptNumber}
+                </span>
                 <Badge
                   className={
                     sale.paymentMethod === 'cash'
@@ -73,22 +60,76 @@ export function SalesTable({ sales, users, showStaff }: Props) {
                 >
                   {sale.paymentMethod === 'cash' ? 'Cash' : 'Transfer'}
                 </Badge>
-              </TableCell>
-              <TableCell className="text-right font-bold tabular-nums text-primary">
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatDate(sale.createdAt)}
+                {showStaff && ` · ${userMap[sale.servedBy] ?? '—'}`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="font-bold tabular-nums text-primary">
                 {formatCurrency(sale.totalAmount)}
-              </TableCell>
-              <TableCell>
-                <Link
-                  href={`/sales/${sale.id}`}
-                  className="flex items-center justify-center rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
-                >
-                  <Receipt className="h-4 w-4" />
-                </Link>
-              </TableCell>
+              </span>
+              <Receipt className="h-4 w-4 text-muted-foreground/40" />
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* ── Desktop table view ────────────────────────────────────────── */}
+      <div className="hidden md:block rounded-lg border bg-white overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-gray-50 hover:bg-gray-50">
+              <TableHead className="font-semibold">Receipt</TableHead>
+              <TableHead className="font-semibold">Date & Time</TableHead>
+              {showStaff && <TableHead className="font-semibold">Staff</TableHead>}
+              <TableHead className="font-semibold">Payment</TableHead>
+              <TableHead className="font-semibold text-right">Total</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {sales.map((sale) => (
+              <TableRow key={sale.id} className="hover:bg-gray-50/50">
+                <TableCell className="font-mono text-sm font-semibold text-primary">
+                  {sale.receiptNumber}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {formatDate(sale.createdAt)}
+                </TableCell>
+                {showStaff && (
+                  <TableCell className="text-sm">
+                    {userMap[sale.servedBy] ?? '—'}
+                  </TableCell>
+                )}
+                <TableCell>
+                  <Badge
+                    className={
+                      sale.paymentMethod === 'cash'
+                        ? 'bg-green-100 text-green-700 hover:bg-green-100 border-0 text-xs'
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-100 border-0 text-xs'
+                    }
+                  >
+                    {sale.paymentMethod === 'cash' ? 'Cash' : 'Transfer'}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right font-bold tabular-nums text-primary">
+                  {formatCurrency(sale.totalAmount)}
+                </TableCell>
+                <TableCell>
+                  <Link
+                    href={`/sales/${sale.id}`}
+                    className="flex items-center justify-center rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                  >
+                    <Receipt className="h-4 w-4" />
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   )
 }

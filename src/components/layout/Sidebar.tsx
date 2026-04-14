@@ -21,7 +21,11 @@ const navItems = [
   { href: '/settings', label: 'Settings', icon: Settings, ownerOnly: true },
 ]
 
-export function Sidebar() {
+interface Props {
+  onClose?: () => void
+}
+
+export function Sidebar({ onClose }: Props) {
   const pathname = usePathname()
   const { user, isOwner, clearSession } = useSessionStore()
 
@@ -42,6 +46,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => onClose?.()}
                 className={cn(
                   'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
                   active

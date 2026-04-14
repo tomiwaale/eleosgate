@@ -18,23 +18,63 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const setupSchema = z.object({
   storeName: z.string().min(2, 'Store name required'),
   storeAddress: z.string().min(5, 'Address required'),
   storePhone: z.string().min(7, 'Phone number required'),
   ownerName: z.string().min(2, 'Your name required'),
-  email: z.string().email('Valid email required'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().optional().or(z.literal('')),
+  password: z.string().optional().or(z.literal('')),
   pin: z
     .string()
     .min(4, 'PIN must be at least 4 digits')
     .max(8, 'PIN must be at most 8 digits')
     .regex(/^\d+$/, 'PIN must be digits only'),
   confirmPin: z.string(),
-}).refine((d) => d.pin === d.confirmPin, {
-  message: 'PINs do not match',
-  path: ['confirmPin'],
+}).superRefine((data, ctx) => {
+  const email = data.email?.trim() ?? ''
+  const password = data.password ?? ''
+  const wantsCloudBackup = email.length > 0 || password.length > 0
+
+  if (wantsCloudBackup) {
+    if (!email) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Email is required for cloud backup',
+        path: ['email'],
+      })
+    } else if (!z.string().email().safeParse(email).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Valid email required',
+        path: ['email'],
+      })
+    }
+
+    if (!password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Password is required for cloud backup',
+        path: ['password'],
+      })
+    } else if (password.length < 6) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Password must be at least 6 characters',
+        path: ['password'],
+      })
+    }
+  }
+
+  if (data.pin !== data.confirmPin) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'PINs do not match',
+      path: ['confirmPin'],
+    })
+  }
 })
 
 type SetupForm = z.infer<typeof setupSchema>
@@ -53,55 +93,62 @@ export default function SetupPage() {
   } = useForm<SetupForm>({ resolver: zodResolver(setupSchema) })
 
   async function onSubmit(data: SetupForm) {
-    if (!isSupabaseConfigured) {
-      setError(missingSupabaseEnvMessage)
-      return
-    }
-
     setLoading(true)
     setError(null)
 
     try {
-      const supabase = requireSupabaseClient()
-
-      // 1. Create Supabase account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-      })
-
-      if (authError) throw new Error(authError.message)
-      const uid = authData.user?.id
-      if (!uid) throw new Error('Failed to create account')
-
-      // 2. Save store settings to IndexedDB
+      // 1. Save local store settings to IndexedDB first so setup works offline.
       const settingsToSave = [
         { key: 'store_name', value: data.storeName },
         { key: 'store_address', value: data.storeAddress },
         { key: 'store_phone', value: data.storePhone },
-        { key: 'owner_email', value: data.email },
-        { key: 'supabase_uid', value: uid },
-        { key: 'last_receipt_number', value: '0' },
+        ...(data.email?.trim() ? [{ key: 'owner_email', value: data.email.trim() }] : []),
       ]
-      await db.settings.bulkPut(settingsToSave)
-
-      // 3. Hash PIN and save owner user
       const pinHash = await hashPin(data.pin)
       const ownerId = uuidv4()
       const now = new Date().toISOString()
 
-      await db.users.add({
-        id: ownerId,
-        name: data.ownerName,
-        role: 'owner',
-        pinHash,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-        isSynced: false,
+      await db.transaction('rw', db.settings, db.users, async () => {
+        await db.settings.bulkPut(settingsToSave)
+        await db.users.add({
+          id: ownerId,
+          name: data.ownerName,
+          role: 'owner',
+          pinHash,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+          isSynced: false,
+        })
       })
 
-      // 4. Set session and redirect
+      if (data.email?.trim() && data.password) {
+        if (isSupabaseConfigured) {
+          try {
+            const supabase = requireSupabaseClient()
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+              email: data.email.trim(),
+              password: data.password,
+            })
+
+            if (authError) throw new Error(authError.message)
+            const uid = authData.user?.id
+            if (!uid) throw new Error('Failed to create cloud backup account')
+
+            await db.settings.put({ key: 'supabase_uid', value: uid })
+          } catch (err) {
+            toast.error(
+              err instanceof Error
+                ? `Local setup finished, but cloud backup is not connected yet: ${err.message}`
+                : 'Local setup finished, but cloud backup is not connected yet.'
+            )
+          }
+        } else {
+          toast.error(`Local setup finished, but ${missingSupabaseEnvMessage}`)
+        }
+      }
+
+      // 2. Set session and redirect
       setUser({ id: ownerId, name: data.ownerName, role: 'owner' })
       router.replace('/dashboard')
     } catch (err) {
@@ -120,12 +167,6 @@ export default function SetupPage() {
             Set up your pharmacy store to get started.
           </p>
         </div>
-
-        {!isSupabaseConfigured && (
-          <div className="mb-6 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            {missingSupabaseEnvMessage}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* Store Details */}
@@ -176,7 +217,7 @@ export default function SetupPage() {
           {/* Owner Account */}
           <div>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Owner Account
+              Cloud Backup (Optional)
             </h2>
             <div className="space-y-3">
               <div>
@@ -205,7 +246,7 @@ export default function SetupPage() {
                 )}
               </div>
               <div>
-                <Label htmlFor="password">Password (for cloud backup)</Label>
+                <Label htmlFor="password">Password</Label>
                 <div className="relative mt-1">
                   <Input
                     id="password"
@@ -225,6 +266,10 @@ export default function SetupPage() {
                 {errors.password && (
                   <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>
                 )}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Leave email and password blank if you want to finish setup offline and connect
+                  cloud backup later.
+                </p>
               </div>
             </div>
           </div>

@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Eleosgate POS
 
-## Getting Started
+Offline-first pharmacy POS built with Next.js, Dexie, and Supabase.
 
-First, run the development server:
+## What Changed
+
+This branch hardens the sync model so the app is safer across multiple devices:
+
+- Receipt numbers are device-unique instead of local counters.
+- Stock sync uses immutable quantity deltas instead of last-write-wins product overwrites.
+- Full restore pulls are paginated so stores do not stop restoring after 1000 rows.
+- Categories now carry `updated_at`, so renames sync properly.
+- Sync reachability now probes Supabase instead of trusting `navigator.onLine`.
+- First-run setup can finish offline, with cloud backup connected later from Settings.
+
+## Local Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy `.env.example` to `.env.local` and fill in your Supabase values.
+
+3. Apply the SQL migration in [`supabase/migrations/20260414_sync_hardening.sql`](./supabase/migrations/20260414_sync_hardening.sql) to your Supabase project.
+
+4. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Testing Offline / PWA
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`next-pwa` is still off by default in development so normal local work stays predictable.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To test the real service worker in dev:
 
-## Learn More
+```bash
+NEXT_PUBLIC_ENABLE_PWA_DEV=true npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+When that flag is on, the dev service-worker reset helper is disabled so the PWA can stay installed between refreshes.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Supabase Notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- RLS is required because the anon key is public in the browser.
+- The new `apply_stock_adjustment` RPC applies stock changes atomically and idempotently.
+- Product quantity is no longer synced as an absolute client-side overwrite.

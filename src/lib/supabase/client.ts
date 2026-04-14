@@ -29,3 +29,27 @@ export function requireSupabaseClient() {
 
   return client
 }
+
+export async function canReachSupabase(timeoutMs = 5000) {
+  if (!isSupabaseConfigured) return false
+  if (typeof window === 'undefined') return true
+  if (!navigator.onLine) return false
+
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const healthUrl = new URL('/rest/v1/', supabaseUrl!).toString()
+    await fetch(healthUrl, {
+      method: 'GET',
+      headers: { apikey: supabaseAnonKey! },
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+    return true
+  } catch {
+    return false
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}

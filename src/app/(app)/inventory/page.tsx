@@ -10,6 +10,7 @@ import { ExpiryStatus, StockStatus } from '@/types'
 import { ProductTable } from '@/components/inventory/ProductTable'
 import { ProductFilters, type InventoryFilter } from '@/components/inventory/ProductFilters'
 import { CategoryManager } from '@/components/inventory/CategoryManager'
+import { ProductImport } from '@/components/inventory/ProductImport'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Search, Plus } from 'lucide-react'
@@ -74,24 +75,25 @@ export default function InventoryPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Inventory</h1>
           <p className="text-sm text-muted-foreground">
             {products?.length ?? 0} product{products?.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {isOwner() && <CategoryManager categories={categories ?? []} />}
-          {isOwner() && (
+        {isOwner() && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <CategoryManager categories={categories ?? []} />
+            <ProductImport categories={categories ?? []} />
             <Link href="/inventory/new">
               <Button className="bg-primary hover:bg-primary-dark text-white gap-2">
                 <Plus className="h-4 w-4" />
                 Add Product
               </Button>
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Search */}

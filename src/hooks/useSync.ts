@@ -2,16 +2,23 @@
 
 import { useEffect, useCallback } from 'react'
 import { syncToSupabase } from '@/lib/supabase/sync'
-import { isSupabaseConfigured } from '@/lib/supabase/client'
+import { canReachSupabase, isSupabaseConfigured } from '@/lib/supabase/client'
 import { useSyncStore } from '@/store/sync.store'
 import { db } from '@/lib/db'
 
-export function useSync() {
+interface UseSyncOptions {
+  auto?: boolean
+}
+
+export function useSync({ auto = true }: UseSyncOptions = {}) {
   const { setStatus, setLastSyncedAt } = useSyncStore()
 
   const sync = useCallback(async () => {
     if (!isSupabaseConfigured) return
-    if (!navigator.onLine) return
+    if (!(await canReachSupabase())) {
+      setStatus('offline')
+      return
+    }
     setStatus('syncing')
     try {
       await syncToSupabase()
@@ -24,9 +31,9 @@ export function useSync() {
   }, [setStatus, setLastSyncedAt])
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!auto || !isSupabaseConfigured) return
 
-    sync()
+    void sync()
 
     const interval = setInterval(sync, 60_000)
     window.addEventListener('online', sync)
@@ -35,7 +42,7 @@ export function useSync() {
       clearInterval(interval)
       window.removeEventListener('online', sync)
     }
-  }, [sync])
+  }, [auto, sync])
 
   return { sync }
 }

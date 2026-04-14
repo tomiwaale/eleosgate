@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
 import type { Product, Category } from '@/lib/db'
+import { createStockAdjustment } from '@/lib/inventory/stock'
 import { useSessionStore } from '@/store/session.store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,30 +70,79 @@ export function ProductForm({ product, categories }: Props) {
 
   async function onSubmit(data: ProductFormValues) {
     const now = new Date().toISOString()
-
-    const productData: Omit<Product, 'id' | 'createdAt'> & { id?: string; createdAt?: string } = {
+    const quantityInStock = data.quantityInStock
+    const metadata = {
       name: data.name.trim(),
       barcode: data.barcode?.trim() || undefined,
       categoryId: data.categoryId || undefined,
       sellingPrice: data.sellingPrice,
       costPrice: data.costPrice,
-      quantityInStock: data.quantityInStock,
       reorderLevel: data.reorderLevel,
       expiryDate: data.expiryDate ? new Date(data.expiryDate).toISOString() : undefined,
       isActive: true,
-      updatedAt: now,
-      isSynced: false,
     }
 
     if (isEditing) {
-      await db.products.update(product.id, productData)
+      const quantityChange = quantityInStock - product.quantityInStock
+      const metadataChanged =
+        product.name !== metadata.name ||
+        product.barcode !== metadata.barcode ||
+        product.categoryId !== metadata.categoryId ||
+        product.sellingPrice !== metadata.sellingPrice ||
+        product.costPrice !== metadata.costPrice ||
+        product.reorderLevel !== metadata.reorderLevel ||
+        product.expiryDate !== metadata.expiryDate
+
+      await db.transaction('rw', db.products, db.stockAdjustments, async () => {
+        await db.products.update(product.id, {
+          ...metadata,
+          quantityInStock,
+          ...(metadataChanged
+            ? {
+                updatedAt: now,
+                isSynced: false,
+              }
+            : {}),
+        })
+
+        if (quantityChange !== 0) {
+          await db.stockAdjustments.add(
+            createStockAdjustment({
+              productId: product.id,
+              quantityChange,
+              reason: 'manual_adjustment',
+              createdAt: now,
+            })
+          )
+        }
+      })
+
       toast.success('Product updated')
     } else {
-      await db.products.add({
-        ...productData,
-        id: uuidv4(),
-        createdAt: now,
-      } as Product)
+      const productId = uuidv4()
+
+      await db.transaction('rw', db.products, db.stockAdjustments, async () => {
+        await db.products.add({
+          ...metadata,
+          id: productId,
+          quantityInStock,
+          createdAt: now,
+          updatedAt: now,
+          isSynced: false,
+        } as Product)
+
+        if (quantityInStock > 0) {
+          await db.stockAdjustments.add(
+            createStockAdjustment({
+              productId,
+              quantityChange: quantityInStock,
+              reason: 'initial_stock',
+              createdAt: now,
+            })
+          )
+        }
+      })
+
       toast.success('Product added to inventory')
     }
 

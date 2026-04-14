@@ -1,9 +1,28 @@
 import { db } from '@/lib/db'
 
+const DEVICE_ID_KEY = 'device_id'
+
+function createShortId(length: number) {
+  const randomId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '')
+      : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+
+  return randomId.slice(0, length).toUpperCase()
+}
+
+async function getOrCreateDeviceId() {
+  const existing = await db.settings.get(DEVICE_ID_KEY)
+  if (existing?.value) return existing.value
+
+  const deviceId = createShortId(4)
+  await db.settings.put({ key: DEVICE_ID_KEY, value: deviceId })
+  return deviceId
+}
+
 export async function generateReceiptNumber(): Promise<string> {
-  const setting = await db.settings.get('last_receipt_number')
-  const last = parseInt(setting?.value ?? '0')
-  const next = last + 1
-  await db.settings.put({ key: 'last_receipt_number', value: next.toString() })
-  return `EG-${next.toString().padStart(4, '0')}`
+  const deviceId = await getOrCreateDeviceId()
+  const timePart = Date.now().toString(36).toUpperCase()
+  const randomPart = createShortId(4)
+  return `EG-${deviceId}-${timePart}${randomPart}`
 }

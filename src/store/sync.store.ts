@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-type SyncStatus = 'idle' | 'syncing' | 'error'
+type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline'
 
 interface SyncState {
   status: SyncStatus

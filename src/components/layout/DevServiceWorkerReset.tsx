@@ -7,6 +7,7 @@ const RESET_FLAG = 'eg-dev-sw-reset'
 export function DevServiceWorkerReset() {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return
+    if (process.env.NEXT_PUBLIC_ENABLE_PWA_DEV === 'true') return
     if (!('serviceWorker' in navigator) || typeof caches === 'undefined') return
     if (sessionStorage.getItem(RESET_FLAG) === 'done') return
 

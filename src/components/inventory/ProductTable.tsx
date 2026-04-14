@@ -62,7 +62,108 @@ export function ProductTable({ products, categories }: Props) {
 
   return (
     <>
-      <div className="rounded-lg border bg-white overflow-hidden">
+      {/* ── Mobile card view ──────────────────────────────────────────── */}
+      <div className="md:hidden space-y-2">
+        {products.map((product) => {
+          const stockStatus = getStockStatus(product.quantityInStock, product.reorderLevel)
+          const expiryStatus = getExpiryStatus(product.expiryDate)
+
+          return (
+            <div key={product.id} className="rounded-lg border bg-white p-4 shadow-sm">
+              {/* Name + badges */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{product.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {product.categoryId ? (categoryMap[product.categoryId] ?? '—') : '—'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1 shrink-0">
+                  {stockStatus === StockStatus.OutOfStock && (
+                    <Badge className="bg-danger/10 text-danger hover:bg-danger/20 border-0 text-xs">
+                      Out of stock
+                    </Badge>
+                  )}
+                  {stockStatus === StockStatus.Low && (
+                    <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 text-xs">
+                      Low stock
+                    </Badge>
+                  )}
+                  {expiryStatus === ExpiryStatus.Expired && (
+                    <Badge className="bg-danger/10 text-danger hover:bg-danger/20 border-0 text-xs">
+                      Expired
+                    </Badge>
+                  )}
+                  {expiryStatus === ExpiryStatus.ExpiringSoon && (
+                    <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 text-xs">
+                      Expiring soon
+                    </Badge>
+                  )}
+                  {stockStatus === StockStatus.Ok && expiryStatus === ExpiryStatus.Ok && (
+                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0 text-xs">
+                      OK
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Stock</p>
+                  <p
+                    className={
+                      stockStatus === StockStatus.OutOfStock
+                        ? 'font-bold text-danger'
+                        : stockStatus === StockStatus.Low
+                        ? 'font-semibold text-amber-600'
+                        : 'font-semibold'
+                    }
+                  >
+                    {product.quantityInStock}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Price</p>
+                  <p className="font-semibold tabular-nums">{formatCurrency(product.sellingPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Expiry</p>
+                  <p>{product.expiryDate ? formatDateShort(product.expiryDate) : '—'}</p>
+                </div>
+              </div>
+
+              {/* Owner actions */}
+              {isOwner() && (
+                <div className="mt-3 flex items-center gap-2 border-t pt-3">
+                  {product.barcode && (
+                    <span className="flex-1 font-mono text-xs text-muted-foreground truncate">
+                      {product.barcode}
+                    </span>
+                  )}
+                  <div className="flex gap-1 ml-auto">
+                    <Link
+                      href={`/inventory/${product.id}`}
+                      className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Link>
+                    <button
+                      onClick={() => setDeletingId(product.id)}
+                      className="rounded p-1.5 text-muted-foreground hover:bg-danger/10 hover:text-danger transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Desktop table view ────────────────────────────────────────── */}
+      <div className="hidden md:block rounded-lg border bg-white overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50 hover:bg-gray-50">
